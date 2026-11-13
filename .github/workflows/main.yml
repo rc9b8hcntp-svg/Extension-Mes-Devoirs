@@ -1,0 +1,45 @@
+name: Publier la branche (Release)
+
+# Publie tout le contenu de la branche choisie dans une Release GitHub :
+# un zip de l'extension, prêt à télécharger.
+# Ne démarre jamais tout seul : onglet « Actions » → « Publier la branche (Release) »
+# → « Run workflow » → choisir la branche → « Run workflow ».
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Créer la Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le code de la branche
+        uses: actions/checkout@v4
+
+      - name: Lire la version
+        id: v
+        run: |
+          VERSION=$(jq -r .version manifest.json)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "zip=Extension-Mes-Devoirs-$VERSION.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Zipper tout le contenu de la branche
+        run: git archive --format=zip --output "${{ steps.v.outputs.zip }}" HEAD
+
+      - name: Publier la Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v${{ steps.v.outputs.version }}"
+          # Si cette version existe déjà, on la remplace par le contenu actuel de la branche.
+          gh release delete "$TAG" --cleanup-tag --yes 2>/dev/null || true
+          gh release create "$TAG" "${{ steps.v.outputs.zip }}" \
+            --target "$GITHUB_SHA" \
+            --title "Mes Devoirs – Ajouter $TAG" \
+            --notes "Contenu de la branche « $GITHUB_REF_NAME » (commit ${GITHUB_SHA::7}). Décompresse le zip, puis suis LISEZ-MOI.md pour l'installer dans Chrome ou Edge."
